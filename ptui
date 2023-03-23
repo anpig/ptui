@@ -1,0 +1,58 @@
+#! /bin/bash
+if [ $(whoami) != "root" ]; then
+    echo "Permission denied."
+fi
+
+CMD() {
+    dialog --erase-on-exit "$@" 2>&1 > /dev/tty
+}
+
+oncancel() {
+    if [ $? -ne 0 ]; then
+        $@
+    fi
+}
+
+main() {
+    vmlxc=$(CMD --menu "ptui - Proxmox VE VM/LXC Management TUI" 0 45 0 "VM" "" "LXC" "")
+    oncancel exit
+    case "$vmlxc" in
+        VM) vmlist;;
+        LXC) lxclist;;
+        *) exit 1
+    esac
+}
+
+vmlist() {
+    vmlist=$(qm list | tail -n +2 | tr -s ' ' | cut -d' ' -f2,3 | tr '\n' ' ')
+    target_vm=$(CMD --menu "VM Management" 0 45 0 $vmlist)
+    oncancel main
+    vmmgmt $target_vm
+}
+
+vmmgmt() {
+    vmname=$(qm list | grep -w $1 | tr -s ' ' | cut -d' ' -f3)
+    vmstatus=$(qm status $1 | cut -d' ' -f2)
+    case "$vmstatus" in 
+        running) vmaction=$(CMD --menu "$vmname" 0 0 0 Stop "" Suspend "" Shutdown "" Reboot "" Reset "");;
+        stopped) vmaction=$(CMD --menu "$vmname" 0 0 0 Start "");;
+    esac
+    oncancel vmlist
+    case "$vmaction" in
+        Start) qm start $1;;
+        Stop) qm stop $1;;
+        Suspend) qm suspend $1;;
+        Shutdown) qm shutdown $1;;
+        Reboot) qm reboot $1;;
+        Reset) qm reset $1;;
+        *) exit 1
+    esac
+    oncancel exit $?
+    vmlist
+}
+
+lxclist() {
+    lxclist=$(pct list)
+}
+
+main
